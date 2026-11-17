@@ -19,9 +19,10 @@
         </div>
      </div>
 
-   WHERE TO HOOK IN AGENT TRACKING: look for onAgentEvent() below. It is
-   called for every send, reply and feedback click. Right now it only logs
-   to the console; add your own tracking call inside it.
+   AGENT TRACKING: look for onAgentEvent() below. It is called for every
+   send, reply and feedback click. It logs to the console and sends Pendo
+   Track Agent events (pendo.trackAgent) for prompts, replies and
+   thumbs up/down. Without a Pendo key it only logs.
    ===================================================================== */
 
 (function () {
@@ -69,10 +70,62 @@
 
 
   // ---------- 2. TRACKING HOOK ----------
-  // Called with an event name and some details. Add your tracking here.
+  // Called with an event name and some details. It logs to the console,
+  // then sends the matching Pendo Track Agent event (see trackAgent below).
+  //
+  //   'send'     -> pendo.trackAgent('prompt', ...)          you sent a message
+  //   'reply'    -> pendo.trackAgent('agent_response', ...)  the reply finished typing
+  //   'feedback' -> pendo.trackAgent('user_reaction', ...)   thumbs up or down
+  //   'copy'     -> console only (not a Track Agent reaction type)
   function onAgentEvent(name, details) {
     console.log('[agent]', name, details);
-    // e.g. window.pendo && pendo.track('Agent ' + name, details);
+
+    if (name === 'send') {
+      trackAgent('prompt', {
+        messageId: details.messageId,
+        content: details.text,
+        suggestedPrompt: details.suggested,   // true if a suggestion chip was clicked
+        fileUploaded: false                   // this chat has no file upload
+      });
+    } else if (name === 'reply') {
+      trackAgent('agent_response', {
+        messageId: details.messageId,
+        content: details.text,
+        toolsUsed: details.steps              // the "tool step" lines shown before the reply
+      });
+    } else if (name === 'feedback') {
+      trackAgent('user_reaction', {
+        messageId: details.messageId,         // the id of the agent message being rated
+        content: details.rating === 'up' ? 'positive' : 'negative'
+      });
+    }
+  }
+
+  // ---------- 2b. PENDO TRACK AGENT ----------
+  // The agent id comes from Pendo (it names the "fAIke Assistant" agent).
+  var PENDO_AGENT_ID = '-ccaHWqCc2vExNRNM2mg12o0Y70';
+
+  // One id per chat. A new one is made every time "New chat" is clicked
+  // (see newChat below), so each conversation can be told apart in Pendo.
+  var conversationId = '';
+
+  // Makes a unique id. crypto.randomUUID() only works on https or
+  // localhost, so fall back to a timestamp plus a random number elsewhere.
+  function makeId(prefix) {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return prefix + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+  }
+
+  // Sends one event to Pendo. Adds the agent id and conversation id to the
+  // details. Does nothing if Pendo hasn't loaded (for example, no API key
+  // is set in config.js), so the chat still works without Pendo.
+  function trackAgent(eventType, metadata) {
+    if (!window.pendo || typeof window.pendo.trackAgent !== 'function') return;
+    metadata.agentId = PENDO_AGENT_ID;
+    metadata.conversationId = conversationId;
+    window.pendo.trackAgent(eventType, metadata);
   }
 
 
@@ -88,13 +141,17 @@
   function pause(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
   function scrollToBottom() { log.scrollTop = log.scrollHeight; }
 
-  // Adds one message to the chat and returns its text element.
+  // Adds one message to the chat and returns its element.
+  // Each message also gets a unique data-track-id. Pendo uses it as the
+  // messageId, so a thumbs up/down can point back to the exact reply.
+  // (data-message-id restarts at m1 in every new chat, so it isn't unique.)
   function addMessage(role, text) {
     messageCount++;
     var msg = document.createElement('div');
     msg.className = 'msg msg-' + role;
     msg.setAttribute('data-role', role);
     msg.setAttribute('data-message-id', 'm' + messageCount);
+    msg.setAttribute('data-track-id', makeId(role === 'agent' ? 'agent_response' : 'prompt'));
     msg.innerHTML =
       '<div class="msg-avatar">' + (role === 'agent' ? '✨' : '🙂') + '</div>' +
       '<div class="msg-body"><div class="msg-text">' + esc(text) + '</div></div>';
@@ -162,18 +219,19 @@
         '<button class="msg-action action-down"  aria-label="Bad answer">👎</button>' +
       '</div>');
 
-    onAgentEvent('reply', { messageId: msg.getAttribute('data-message-id'), text: reply.text });
+    onAgentEvent('reply', { messageId: msg.getAttribute('data-track-id'), text: reply.text, steps: reply.steps });
     scrollToBottom();
     setBusy(false);
     input.focus();
   }
 
   // Send whatever is in the text box (or a suggestion's text).
-  function send(text) {
+  // "suggested" is true when a suggestion chip was clicked.
+  function send(text, suggested) {
     text = (text || '').trim();
     if (!text || busy) return;
-    addMessage('user', text);
-    onAgentEvent('send', { text: text });
+    var msg = addMessage('user', text);
+    onAgentEvent('send', { messageId: msg.getAttribute('data-track-id'), text: text, suggested: suggested === true });
     input.value = '';
     respondTo(text);
   }
@@ -182,6 +240,7 @@
   function newChat() {
     log.innerHTML = '';
     messageCount = 0;
+    conversationId = makeId('conversation');   // a fresh id for each chat
     addMessage('agent', GREETING);
     setBusy(false);
   }
@@ -202,7 +261,7 @@
   });
 
   document.querySelectorAll('#chat-suggestions .chip').forEach(function (chip) {
-    chip.addEventListener('click', function () { send(chip.textContent); });
+    chip.addEventListener('click', function () { send(chip.textContent, true); });
   });
 
   document.getElementById('agent-new-chat').addEventListener('click', newChat);
@@ -213,6 +272,7 @@
     if (!btn) return;
     var msg = btn.closest('.msg');
     var id = msg.getAttribute('data-message-id');
+    var trackId = msg.getAttribute('data-track-id');   // unique id sent to Pendo
 
     if (btn.classList.contains('action-copy')) {
       var text = msg.querySelector('.msg-text').textContent;
@@ -224,7 +284,7 @@
       var up = btn.classList.contains('action-up');
       msg.querySelectorAll('.action-up, .action-down').forEach(function (b) { b.classList.remove('on'); });
       btn.classList.add('on');
-      onAgentEvent('feedback', { messageId: id, rating: up ? 'up' : 'down' });
+      onAgentEvent('feedback', { messageId: trackId, rating: up ? 'up' : 'down' });
     }
   });
 
