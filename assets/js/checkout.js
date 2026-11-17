@@ -199,6 +199,18 @@
       msg.textContent = code ? '✖ Not a valid code' : '';
     }
     drawSummary();
+
+    // Tell Pendo whether the code worked and what it took off the order.
+    // (An empty box isn't an attempt, so nothing is sent for it.)
+    if (code) {
+      var t = totals();
+      track('promo_code_applied', {
+        code:     code.slice(0, 50),            // typed text, so keep it short
+        isValid:  !!PROMO_CODES[code],
+        discount: t.discount,
+        subtotal: t.subtotal
+      });
+    }
   });
 
   // "Checkout" only works with something in the cart.
