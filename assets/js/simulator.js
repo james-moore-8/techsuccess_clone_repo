@@ -227,7 +227,23 @@
       if (state.step >= state.steps.length) {               // this visitor is finished
         update(nextJob);
         state = load();
-        if (state.finished) log('Run finished: ' + state.done + ' steps done, ' + state.failed + ' skipped');
+        if (state.finished) {
+          log('Run finished: ' + state.done + ' steps done, ' + state.failed + ' skipped');
+          // Tell Pendo the run ended on its own (only if Pendo loaded). This
+          // runs once per run: the loop stops right after, because "active"
+          // is now false. A run stopped with the Stop button never gets here.
+          if (window.pendo && pendo.track) {
+            pendo.track('simulator_run_finished', {
+              scenarios: state.opts.scenarios.join(','),
+              visitors:  state.opts.visitors,
+              loops:     state.opts.loops,
+              speed:     state.opts.speed,
+              mode:      state.opts.mode,
+              done:      state.done,
+              failed:    state.failed
+            });
+          }
+        }
         continue;
       }
       var step = state.steps[state.step];

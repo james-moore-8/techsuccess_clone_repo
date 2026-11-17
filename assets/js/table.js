@@ -231,9 +231,33 @@
 
 
   // ---------- 6. TOOLBAR: SEARCH, COLUMNS MENU, RESET ----------
+  // The table filters on every keystroke, but Pendo only hears about a search
+  // once you stop typing for a moment (so "ada" is one event, not three).
+  // An empty box isn't a search. The same search twice in a row is sent once,
+  // unless the box was cleared in between.
+  var searchTimer = null;
+  var lastTrackedSearch = '';
+
+  function trackSearch() {
+    if (!searchText) { lastTrackedSearch = ''; return; }
+    if (searchText === lastTrackedSearch) return;
+    lastTrackedSearch = searchText;
+    if (window.pendo && pendo.track) {
+      pendo.track('data_table_searched', {
+        searchText:         searchText.slice(0, 100),    // typed text, so keep it short
+        resultsCount:       currentRows().length,
+        sortKey:            sort.key || 'none',
+        sortDir:            sort.dir || 'none',
+        visibleColumnCount: visibleColumns().length
+      });
+    }
+  }
+
   document.getElementById('table-search').addEventListener('input', function (event) {
     searchText = event.target.value.trim().toLowerCase();
     draw();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(trackSearch, 800);
   });
 
   // Open / close the Columns popover.
