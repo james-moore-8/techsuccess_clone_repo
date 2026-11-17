@@ -68,7 +68,7 @@ Pendo only loads if a real key is in `config.js`. You can test everything else w
 - **Identical row buttons are intentional** on the Data Table page. They have the same class, no id and no text on purpose.
 - **Fake visitors** are named `sim-...@example.com` so they can be filtered out of reports. Keep that prefix.
 - **Payment form:** it's a mock. Never store card details anywhere, and use obviously fake values in scenarios.
-- **Agent tracking** is a hook only: `onAgentEvent()` in `agent.js` currently just logs to the console.
+- **Agent tracking** goes through `onAgentEvent()` in `agent.js`. It logs to the console and sends `pendo.trackAgent()` events (prompt, agent_response, user_reaction). Each message has a unique `data-track-id` used as the Pendo messageId.
 
 ## Don't
 
