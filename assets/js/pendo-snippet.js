@@ -12,7 +12,7 @@
    ===================================================================== */
 
 (function () {
-  var apiKey = window.TS_CONFIG.pendoApiKey;
+  var apiKey = 'adab364d-9a57-4784-8944-b153cbe9c31c';
 
   // Don't try to load Pendo until a real key has been added in config.js.
   if (!window.TS_CONFIG.hasPendoKey) {
@@ -25,7 +25,7 @@
     var v, w, x, y, z;
     o = p[d] = p[d] || {};
     o._q = o._q || [];
-    v = ['initialize', 'identify', 'updateOptions', 'pageLoad', 'track'];
+    v = ['initialize', 'identify', 'updateOptions', 'pageLoad', 'track', 'trackAgent'];
     for (w = 0, x = v.length; w < x; ++w) (function (m) {
       o[m] = o[m] || function () {
         o._q[m === v[0] ? 'unshift' : 'push']([m].concat([].slice.call(arguments, 0)));
